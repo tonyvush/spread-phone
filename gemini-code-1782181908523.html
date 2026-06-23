@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spread Phone Multiplayer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+        * { box-sizing: border-box; user-select: none; }
+        body { margin: 0; padding: 0; font-family: 'Fredoka One', cursive, sans-serif; background-color: #5C4B99; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #app-container { width: 100%; max-width: 900px; height: 100%; max-height: 700px; background-color: #423670; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 20px; }
+        .screen.active { display: flex; }
+        h1.logo { font-size: 3.5rem; color: #FFD93D; text-shadow: 4px 4px 0px #312854; margin-bottom: 20px; text-align: center; }
+        .input-group { display: flex; flex-direction: column; width: 100%; max-width: 400px; margin-bottom: 15px; }
+        label { font-size: 1.1rem; margin-bottom: 8px; color: #E2DDF0; text-align: center; }
+        input[type="text"] { font-family: 'Fredoka One', cursive; font-size: 1.3rem; padding: 12px; border-radius: 10px; border: none; outline: none; text-align: center; background-color: #312854; color: white; }
+        button { font-family: 'Fredoka One', cursive; font-size: 1.5rem; padding: 12px 30px; border: none; border-radius: 15px; background-color: #6BCB77; color: white; cursor: pointer; box-shadow: 0 6px 0px #4CA15A; transition: transform 0.1s, box-shadow 0.1s; margin-top: 15px; }
+        button:active { transform: translateY(6px); box-shadow: 0 0px 0px #4CA15A; }
+        .player-list { background: #312854; padding: 15px; border-radius: 10px; width: 100%; max-width: 400px; max-height: 150px; overflow-y: auto; margin-top: 15px; }
+        .player-item { padding: 5px 10px; background: #423670; margin-bottom: 5px; border-radius: 5px; text-align: center; }
+        .draw-header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; background-color: #312854; padding: 10px 20px; border-radius: 10px; }
+        .canvas-container { background-color: white; border-radius: 10px; overflow: hidden; cursor: crosshair; }
+        canvas { display: block; }
+        .tools { display: flex; width: 100%; justify-content: space-between; align-items: center; margin-top: 15px; background-color: #312854; padding: 15px; border-radius: 10px; }
+        .colors { display: flex; gap: 8px; }
+        .color-btn { width: 35px; height: 35px; border-radius: 50%; cursor: pointer; }
+        .color-btn.selected { border: 3px solid white; }
+        .brush-sizes { display: flex; align-items: center; gap: 15px; }
+        .brush-btn { background-color: white; border-radius: 50%; cursor: pointer; }
+        .brush-btn.selected { background-color: #FFD93D; }
+        .action-btn { background-color: #FF6B6B; box-shadow: 0 4px 0px #C94C4C; font-size: 1.1rem; padding: 8px 15px; margin-top: 0; }
+        .action-btn:active { transform: translateY(4px); box-shadow: 0 0px 0px #C94C4C; }
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+    <div id="app-container">
+        
+        <div id="screen-lobby" class="screen active">
+            <h1 class="logo">SPREAD PHONE</h1>
+            <div class="input-group">
+                <label>ROOM CODE</label>
+                <input type="text" id="room-id" placeholder="e.g. ROOM123" maxlength="10">
+            </div>
+            <div class="input-group">
+                <label>NICKNAME</label>
+                <input type="text" id="nickname" placeholder="Your Name" maxlength="12">
+            </div>
+            <button onclick="connectToRoom()">JOIN ROOM</button>
+        </div>
+
+        <div id="screen-waiting" class="screen">
+            <h1 class="logo" style="font-size: 2.5rem;">LOBBY</h1>
+            <p>Waiting for host to start...</p>
+            <div class="player-list" id="player-list-container"></div>
+            <button id="start-game-btn" onclick="requestStartGame()">START GAME</button>
+        </div>
+
+        <div id="screen-write" class="screen">
+            <h1 class="logo" style="font-size: 2.5rem;">WHAT SHOULD THEY DRAW?</h1>
+            <div class="input-group" style="max-width: 600px;">
+                <input type="text" id="prompt-input" placeholder="e.g. A monkey playing guitar" maxlength="50">
+            </div>
+            <button onclick="submitPrompt()">SUBMIT PROMPT</button>
+        </div>
+
+        <div id="screen-draw" class="screen">
+            <div class="draw-header">
+                <div id="current-prompt" style="color:#FFD93D; font-size:1.3rem;">DRAW!</div>
+            </div>
+            <div class="canvas-container">
+                <canvas id="drawing-canvas" width="700" height="350"></canvas>
+            </div>
+            <div class="tools">
+                <div class="colors" id="color-palette"></div>
+                <div class="brush-sizes">
+                    <div class="brush-btn" style="width: 10px; height: 10px;" onclick="setBrushSize(5, this)"></div>
+                    <div class="brush-btn selected" style="width: 20px; height: 20px;" onclick="setBrushSize(10, this)"></div>
+                </div>
+                <div>
+                    <button class="action-btn" onclick="clearCanvas()">CLEAR</button>
+                    <button class="action-btn" style="background-color: #6BCB77; box-shadow:0 4px 0px #4CA15A;" onclick="submitDrawing()">DONE</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="screen-holding" class="screen">
+            <h1 class="logo" style="font-size: 2.5rem;">SUBMITTED!</h1>
+            <p>Waiting for other players to finish their turns...</p>
+        </div>
+
+    </div>
+
+    <script>
+        // CHANGE THIS URL to your live backend server address after deploying to Render!
+        const BACKEND_URL = "http://localhost:3000"; 
+        let socket;
+        let roomId, username;
+
+        // Canvas Setup
+        const canvas = document.getElementById('drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false, currentColor = '#000000', currentLineWidth = 10;
+        const colors = ['#000000', '#FFFFFF', '#FF3B30', '#FFCC00', '#4CD964', '#007AFF', '#5856D6'];
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        // Connect to Server
+        function connectToRoom() {
+            roomId = document.getElementById('room-id').value.trim().toUpperCase();
+            username = document.getElementById('nickname').value.trim();
+
+            if (!roomId || !username) return alert('Fill out both fields!');
+
+            socket = io(BACKEND_URL);
+
+            socket.emit('joinRoom', { roomId, username });
+
+            socket.on('updatePlayers', (players) => {
+                const list = document.getElementById('player-list-container');
+                list.innerHTML = players.map(p => `<div class="player-item">${p.username}</div>`).join('');
+            });
+
+            socket.on('gameStarted', () => {
+                showScreen('screen-write');
+            });
+
+            socket.on('nextPhase', (players) => {
+                // To keep it clean and simple for this prototype, we alternate to a canvas drawing screen!
+                // A production logic array loops through alternating types
+                document.getElementById('current-prompt').innerText = "Draw whatever you like or what you received!";
+                initCanvas();
+                showScreen('screen-draw');
+            });
+
+            showScreen('screen-waiting');
+        }
+
+        function requestStartGame() {
+            socket.emit('startGame', roomId);
+        }
+
+        function submitPrompt() {
+            const prompt = document.getElementById('prompt-input').value.trim();
+            if(!prompt) return alert('Write something!');
+            socket.emit('submitTurn', { roomId, type: 'text', value: prompt });
+            showScreen('screen-holding');
+        }
+
+        function submitDrawing() {
+            const dataUrl = canvas.toDataURL();
+            socket.emit('submitTurn', { roomId, type: 'image', value: dataUrl });
+            showScreen('screen-holding');
+        }
+
+        // Canvas Mechanics
+        function initCanvas() {
+            ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            const palette = document.getElementById('color-palette'); palette.innerHTML = '';
+            colors.forEach(c => {
+                const b = document.createElement('div'); b.className = 'color-btn'; b.style.backgroundColor = c;
+                if (c === currentColor) b.classList.add('selected');
+                b.onclick = () => { currentColor = c; document.querySelectorAll('.color-btn').forEach(btn=>btn.classList.remove('selected')); b.classList.add('selected'); };
+                palette.appendChild(b);
+            });
+        }
+
+        function getMousePos(e) {
+            const r = canvas.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: (cx - r.left) * (canvas.width / r.width), y: (cy - r.top) * (canvas.height / r.height) };
+        }
+        function draw(e) {
+            if(!isDrawing) return; e.preventDefault(); const p = getMousePos(e);
+            ctx.lineWidth = currentLineWidth; ctx.strokeStyle = currentColor;
+            ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(p.x, p.y);
+        }
+        canvas.addEventListener('mousedown', (e)=>{isDrawing=true; draw(e);});
+        canvas.addEventListener('mouseup', ()=>{isDrawing=false; ctx.beginPath();});
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('touchstart', (e)=>{isDrawing=true; draw(e);}, {passive:false});
+        canvas.addEventListener('touchend', ()=>{isDrawing=false; ctx.beginPath();});
+        canvas.addEventListener('touchmove', draw, {passive:false});
+        function setBrushSize(s, el) { currentLineWidth = s; document.querySelectorAll('.brush-btn').forEach(b=>b.classList.remove('selected')); el.classList.add('selected'); }
+        function clearCanvas() { if(confirm('Clear?')) { ctx.fillStyle='#FFFFFF'; ctx.fillRect(0,0,canvas.width,canvas.height); } }
+    </script>
+</body>
+</html>
